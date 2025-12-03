@@ -1,9 +1,15 @@
-# hash:sha256:6ceefde681fb5ad2ca41bca5b1ebdfc35ce9ce0f7acc50dc183706cc463f5d61
+# hash:sha256:46ec72c4185f4c671482b554a6cff4f0cfde2ee3e0d7c2c3961b4c83e083b82b
 ARG REGISTRY_HOST
-FROM $REGISTRY_HOST/codeocean/jupyterlab:3.6.1-miniconda4.12.0-python3.9-ubuntu20.04
+FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
-
 ARG GIT_ASKPASS
-ARG GIT_ACCESS_TOKEN
 COPY git-askpass /
+
+RUN pip install -U --no-cache-dir \
+    aind-nwb-utils==0.1.4 \
+    hdmf-zarr==0.12.0 \
+    numpy==2.3.5 \
+    pandas==2.3.3 \
+    pydantic-settings==2.12.0 \
+    pynwb==3.1.2
