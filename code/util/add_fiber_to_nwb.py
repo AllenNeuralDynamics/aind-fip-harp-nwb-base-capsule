@@ -174,6 +174,6 @@ def add_fiber_data_to_nwb(nwb: pynwb.NWBFile, dict_fip: dict) -> pynwb.NWBFile:
             description=description
         )
         logging.info(f"Shape of timeseries data in nwb {ts.data.shape}")
-        add_data(nwb, "acquisition", neural_stream, ts)
+        nwb.add_acquisition(ts)
 
     return nwb
