@@ -5,7 +5,6 @@ from typing import Union
 import numpy as np
 import pandas as pd
 import pynwb
-from aind_nwb_utils.utils import add_data
 from hdmf_zarr import NWBZarrIO
 import logging
 
