@@ -133,6 +133,14 @@ def get_fiber_data_by_channel(session_fiber_directory: Path) -> dict[str, np.nda
             index = column[-1]
             
             data = df_channel[column].to_numpy()
+            is_all_nan = np.isnan(data).all()
+            is_all_zero = np.all((data == 0) | np.isnan(data)) and not is_all_nan
+            if is_all_nan or is_all_zero:
+                logging.warning(
+                f"Skipping fiber {channel}_{index}. All nan or 0s" 
+                )
+                continue
+
             fiber_timeseries[f"{CHANNEL_MAPPING[channel]}_{index}"] = np.array(
                 [timestamps, data]
             )
