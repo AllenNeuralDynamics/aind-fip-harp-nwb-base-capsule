@@ -1,0 +1,41 @@
+{
+	"version": 1,
+	"base_image": "codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04",
+	"options": {
+		"registry_host_arg": true,
+		"git_ask_pass": true,
+		"mount_secrets": true
+	},
+	"installers": {
+		"pip": {
+			"packages": [
+				{
+					"name": "aind-nwb-utils",
+					"version": "0.1.4"
+				},
+				{
+					"name": "hdmf-zarr",
+					"version": "0.12.0"
+				},
+				{
+					"name": "numpy",
+					"version": "2.3.5"
+				},
+				{
+					"name": "pandas",
+					"version": "2.3.3"
+				},
+				{
+					"name": "pydantic-settings",
+					"version": "2.12.0"
+				},
+				{
+					"name": "pynwb",
+					"version": "3.1.2"
+				}
+			],
+			"options": {},
+			"pre_install_options": {}
+		}
+	}
+}
