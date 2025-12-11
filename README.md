@@ -3,9 +3,7 @@
 
 FiberPhotometry Capsule which appends to an NWB subject file. Adds FiberPhotometry information if present.
 
-[Capsule link here](https://codeocean.allenneuraldynamics.org/capsule/3598308/tree)
-
-[Pipeline link here](https://codeocean.allenneuraldynamics.org/capsule/7378248/tree)
+[Capsule link here](https://codeocean.allenneuraldynamics.org/capsule/3393406/tree)
 
 NOTE: This capsule is in development with the file format standards for Fiber Photometry defined here: [Fiber Photometry Acquisition File Standards](https://github.com/AllenNeuralDynamics/aind-file-standards/blob/main/docs/file_formats/fip.md).
 
