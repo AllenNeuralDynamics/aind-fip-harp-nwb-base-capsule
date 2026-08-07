@@ -63,7 +63,7 @@ def run() -> None:
     process_name = os.getenv("PROCESS_NAME", "aind-fip-harp-base-nwb")
     pipeline_name = os.getenv("PIPELINE_NAME", "")
     setup_logging(
-        (Path(__file__).parent / "cloud_watch_config.yml").as_posix(),
+        (Path(__file__).parent / "util" / "logging.yml").as_posix(),
         model={
             "acquisition_name": asset_name,
             "process_name": process_name,
