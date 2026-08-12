@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from hdmf_zarr import NWBZarrIO
+from log_schema import setup_logging
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
@@ -33,13 +34,12 @@ class FiberSettings(BaseSettings, cli_parse_args=True):
     output_directory: Path = Field(
         default=Path("/results/"), description="Output directory"
     )
-if __name__ == "__main__":
-    settings = FiberSettings()
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
 
-    logging.info(f"Fiber Settings, {settings.model_dump()}")
+def run() -> None:
+    """
+    Entrypoint for execution
+    """
+    settings = FiberSettings()
     fiber_fp = settings.input_directory / "fiber_raw_data"
     # Load subject data
     subject_json_path =  fiber_fp / "subject.json"
@@ -59,6 +59,19 @@ if __name__ == "__main__":
     date = session_data["acquisition_start_time"]
 
     asset_name = date_data["name"]
+    ### logging setup
+    process_name = os.getenv("PROCESS_NAME", "aind-fip-harp-base-nwb")
+    pipeline_name = os.getenv("PIPELINE_NAME", "")
+    setup_logging(
+        (Path(__file__).parent / "util" / "logging.yml").as_posix(),
+        model={
+            "acquisition_name": asset_name,
+            "process_name": process_name,
+            "pipeline_name": pipeline_name    
+        },
+    )
+    logging.info("Begin processing...", extra={"event_type": "stage_start"})
+    logging.info(f"Fiber Settings, {settings.model_dump()}")
 
     nwb_filename = f"{asset_name}.nwb"
     nwb_output_path = settings.output_directory / "nwb"
@@ -87,4 +100,12 @@ if __name__ == "__main__":
         io.write(nwbfile)
 
         logging.info("Successfully wrote NWB file.")
+
+    logging.info("Pipeline stage completed", extra={"event_type": "stage_complete"})
+
+if __name__ == "__main__":
+    try:
+        run()
+    except Exception as e:
+        logging.exception("Pipeline stage failed", extra={"event_type": "stage_error"})
 

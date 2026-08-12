@@ -1,0 +1,30 @@
+# Default logging configuration plus a CloudWatch handler
+
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  default:
+    "()": log_schema.main.DefaultFormatter
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    formatter: default
+    level: INFO
+    stream: ext://sys.stdout
+  cloudwatch:
+    class: watchtower.CloudWatchLogHandler
+    formatter: default
+    level: INFO
+    log_group_name: aind/internal-logs
+    send_interval: 10
+    create_log_group: true
+
+loggers:
+  "":
+    handlers:
+      - console
+      - cloudwatch
+    level: INFO
+    propagate: true
