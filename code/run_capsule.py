@@ -17,6 +17,7 @@ from pydantic_settings import BaseSettings
 from aind_nwb_utils.utils import create_base_nwb_file
 from util.add_fiber_to_nwb import (
     get_fiber_data_by_channel,
+    get_roi_to_fiber_mapping,
     add_fiber_data_to_nwb,
     deal_with_nans,
 )
@@ -87,7 +88,19 @@ def run() -> None:
         raise FileNotFoundError("No fiber data found. Check asset")
     
     logging.info("Standard file format detected")
-    fiber_channel_data = get_fiber_data_by_channel(fiber_directories[0])
+
+    procedures_path = fiber_fp / "procedures.json"
+    if not procedures_path.exists():
+        raise FileNotFoundError(
+            "Procedures JSON missing. Cannot check ROIs against implanted fibers"
+        )
+    with procedures_path.open("r") as f:
+        procedures_data = json.load(f)
+
+    roi_to_fiber = get_roi_to_fiber_mapping(session_data, procedures_data)
+    fiber_channel_data = get_fiber_data_by_channel(fiber_directories[0], roi_to_fiber)
+    if not fiber_channel_data:
+        raise ValueError("No fiber data left after mapping ROIs to fibers")
     fiber_channel_data_cleaned_for_nans = deal_with_nans(fiber_channel_data)
     nwbfile = add_fiber_data_to_nwb(
         base_nwb_file, fiber_channel_data_cleaned_for_nans

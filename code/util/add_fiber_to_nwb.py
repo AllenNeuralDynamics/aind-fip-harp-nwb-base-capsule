@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 from typing import Union
 
@@ -6,10 +7,106 @@ import numpy as np
 import pandas as pd
 import pynwb
 from hdmf_zarr import NWBZarrIO
-import logging
 
 
 CHANNEL_MAPPING = {"red": "R", "green": "G", "iso": "Iso"}
+
+# ROI columns are named ROI_<n> in the current file standard, Fiber_<n> in older sessions
+ROI_COLUMN_PATTERN = re.compile(r"^ROI_(\d+)$")
+LEGACY_ROI_COLUMN_PATTERN = re.compile(r"^Fiber_(\d+)$")
+PATCH_CORD_PATTERN = re.compile(r"^Patch Cord (\d+)$")
+FIBER_PATTERN = re.compile(r"^Fiber[ _](\d+)$")
+
+
+def get_implanted_fibers(procedures: dict) -> set[int]:
+    """
+    Get the indices of the fibers implanted according to the procedures metadata.
+
+    Parameters
+    ----------
+    procedures : dict
+        Contents of procedures.json
+
+    Returns
+    -------
+    set[int]
+        Indices of implanted fibers, e.g. {0, 1} for Fiber_0 and Fiber_1
+    """
+    implanted_fibers = set()
+    for subject_procedure in procedures.get("subject_procedures", []):
+        if subject_procedure.get("object_type") != "Surgery":
+            continue
+
+        for procedure in subject_procedure.get("procedures", []):
+            implanted_device = procedure.get("implanted_device") or {}
+            if implanted_device.get("object_type") != "Fiber probe":
+                continue
+
+            match = FIBER_PATTERN.match(implanted_device.get("name", ""))
+            if match:
+                implanted_fibers.add(int(match.group(1)))
+
+    return implanted_fibers
+
+
+def get_roi_to_fiber_mapping(
+    acquisition: dict, procedures: dict
+) -> dict[int, int]:
+    """
+    Map each ROI to the fiber it recorded from, using the patch cord to
+    fiber connections in the acquisition metadata. Patch Cord N corresponds
+    to ROI N.
+
+    Parameters
+    ----------
+    acquisition : dict
+        Contents of acquisition.json
+    procedures : dict
+        Contents of procedures.json. ROIs connected to fibers that were
+        not implanted are dropped.
+
+    Returns
+    -------
+    dict[int, int]
+        Mapping of ROI index to fiber index
+
+    Raises
+    ------
+    ValueError
+        If the acquisition has no patch cord to fiber connections, or
+        procedures has no implanted fibers
+    """
+    roi_to_fiber = {}
+    for data_stream in acquisition.get("data_streams", []):
+        for connection in data_stream.get("connections", []):
+            patch_cord = PATCH_CORD_PATTERN.match(connection.get("source_device", ""))
+            fiber = FIBER_PATTERN.match(connection.get("target_device", ""))
+            if patch_cord and fiber:
+                roi_to_fiber[int(patch_cord.group(1))] = int(fiber.group(1))
+
+    if not roi_to_fiber:
+        raise ValueError(
+            "No patch cord to fiber connections found in acquisition metadata. "
+            "Cannot map ROIs to fibers"
+        )
+
+    implanted_fibers = get_implanted_fibers(procedures)
+    if not implanted_fibers:
+        raise ValueError(
+            "No implanted fibers found in procedures metadata. "
+            "Cannot check ROIs against implanted fibers"
+        )
+
+    for roi, fiber in list(roi_to_fiber.items()):
+        if fiber not in implanted_fibers:
+            logging.warning(
+                f"ROI {roi} is connected to fiber {fiber}, which is not "
+                f"implanted according to procedures. Skipping ROI {roi}"
+            )
+            del roi_to_fiber[roi]
+
+    logging.info(f"ROI to fiber mapping: {roi_to_fiber}")
+    return roi_to_fiber
 
 
 def first_nan_idx(arr: np.ndarray, axis: int = -1) -> int:
@@ -103,7 +200,34 @@ def deal_with_nans(
     return dict_fip
 
 
-def get_fiber_data_by_channel(session_fiber_directory: Path) -> dict[str, np.ndarray]:
+def get_roi_columns(columns: pd.Index, pattern: re.Pattern) -> dict[str, int]:
+    """
+    Get the ROI columns matching a naming pattern.
+
+    Parameters
+    ----------
+    columns : pd.Index
+        Columns of a channel CSV
+    pattern : re.Pattern
+        Pattern with one group capturing the ROI index
+
+    Returns
+    -------
+    dict[str, int]
+        Mapping of column name to ROI index
+    """
+    roi_columns = {}
+    for column in columns:
+        match = pattern.match(column)
+        if match:
+            roi_columns[column] = int(match.group(1))
+
+    return roi_columns
+
+
+def get_fiber_data_by_channel(
+    session_fiber_directory: Path, roi_to_fiber: dict[int, int]
+) -> dict[str, np.ndarray]:
     """
     Load fiber photometry data for each channel from a session directory.
 
@@ -111,11 +235,13 @@ def get_fiber_data_by_channel(session_fiber_directory: Path) -> dict[str, np.nda
     ----------
     session_fiber_directory : Path
         Path to the directory containing fiber photometry data files for the session.
+    roi_to_fiber : dict[int, int]
+        Mapping of ROI index to fiber index. ROIs not in the mapping are skipped.
 
     Returns
     -------
     dict[str, np.ndarray]
-        A dictionary mapping channel name and fiber connection to their corresponding
+        A dictionary mapping channel name and fiber index to their corresponding
         timeseries data.
     """
     fiber_timeseries = {}
@@ -126,18 +252,30 @@ def get_fiber_data_by_channel(session_fiber_directory: Path) -> dict[str, np.nda
             raise FileNotFoundError(f"No {channel} data found in fiber directory")
 
         df_channel = pd.read_csv(session_fiber_directory / f"{channel}.csv")
-        fiber_columns = df_channel.filter(like="Fiber").columns
         timestamps = df_channel["ReferenceTime"].to_numpy()
 
-        for column in fiber_columns:
-            index = column[-1]
-            
+        roi_columns = get_roi_columns(df_channel.columns, ROI_COLUMN_PATTERN)
+        if not roi_columns:
+            roi_columns = get_roi_columns(df_channel.columns, LEGACY_ROI_COLUMN_PATTERN)
+            if not roi_columns:
+                raise ValueError(f"No ROI_<n> or Fiber_<n> columns found in {channel}.csv")
+            logging.info(f"Using legacy Fiber_<n> columns as ROIs in {channel}.csv")
+
+        for column, roi in roi_columns.items():
+            if roi in roi_to_fiber:
+                index = roi_to_fiber[roi]
+            else:
+                logging.warning(
+                    f"Skipping {channel} {column}. ROI not mapped to a fiber in acquisition"
+                )
+                continue
+
             data = df_channel[column].to_numpy()
             is_all_nan = np.isnan(data).all()
             is_all_zero = np.all((data == 0) | np.isnan(data)) and not is_all_nan
             if is_all_nan or is_all_zero:
                 logging.warning(
-                f"Skipping fiber {channel}_{index}. All nan or 0s" 
+                f"Skipping fiber {channel}_{index}. All nan or 0s"
                 )
                 continue
 
@@ -171,7 +309,8 @@ def add_fiber_data_to_nwb(nwb: pynwb.NWBFile, dict_fip: dict) -> pynwb.NWBFile:
         if 'CMOS' in neural_stream:
             description = f"{channel} CMOS floor signal"
         else:
-            description = f"{channel} channel for fiber connection {neural_stream[-1]} using 0-based indexing"
+            fiber_index = neural_stream[neural_stream.index("_") + 1 :]
+            description = f"{channel} channel for fiber {fiber_index} using 0-based indexing"
 
         ts = pynwb.TimeSeries(
             name=neural_stream,
