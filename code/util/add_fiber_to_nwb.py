@@ -11,6 +11,7 @@ from hdmf_zarr import NWBZarrIO
 
 CHANNEL_MAPPING = {"red": "R", "green": "G", "iso": "Iso"}
 
+# Each pattern captures the index in group 1, e.g. match.group(1) is "10" for "ROI_10"
 # ROI columns are named ROI_<n> in the current file standard, Fiber_<n> in older sessions
 ROI_COLUMN_PATTERN = re.compile(r"^ROI_(\d+)$")
 LEGACY_ROI_COLUMN_PATTERN = re.compile(r"^Fiber_(\d+)$")
