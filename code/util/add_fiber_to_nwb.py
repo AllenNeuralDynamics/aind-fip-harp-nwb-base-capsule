@@ -63,7 +63,7 @@ def get_roi_to_fiber_mapping(
     acquisition : dict
         Contents of acquisition.json
     procedures : dict
-        Contents of procedures.json. ROIs connected to fibers that were
+        Contents of procedures.json. ROIs assigned to fibers that were
         not implanted are dropped.
 
     Returns
@@ -74,22 +74,44 @@ def get_roi_to_fiber_mapping(
     Raises
     ------
     ValueError
-        If the acquisition has no patch cord to fiber connections, or
-        procedures has no implanted fibers
+        If the acquisition has no patch cord to fiber connections, an ROI
+        or fiber appears in more than one connection, or procedures has
+        no implanted fibers
     """
-    roi_to_fiber = {}
+    # (roi, fiber) pairs; a set so the same connection listed twice counts once
+    assignments = set()
     for data_stream in acquisition.get("data_streams", []):
         for connection in data_stream.get("connections", []):
-            patch_cord = PATCH_CORD_PATTERN.match(connection.get("source_device", ""))
-            fiber = FIBER_PATTERN.match(connection.get("target_device", ""))
-            if patch_cord and fiber:
-                roi_to_fiber[int(patch_cord.group(1))] = int(fiber.group(1))
+            patch_cord_match = PATCH_CORD_PATTERN.match(connection.get("source_device", ""))
+            fiber_match = FIBER_PATTERN.match(connection.get("target_device", ""))
+            if patch_cord_match and fiber_match:
+                assignments.add((int(patch_cord_match.group(1)), int(fiber_match.group(1))))
 
-    if not roi_to_fiber:
+    if not assignments:
         raise ValueError(
             "No patch cord to fiber connections found in acquisition metadata. "
             "Cannot map ROIs to fibers"
         )
+
+    # Each ROI must be assigned to one fiber, and each fiber to one ROI
+    rois = [roi for roi, _ in assignments]
+    fibers = [fiber for _, fiber in assignments]
+
+    duplicate_rois = {roi for roi in rois if rois.count(roi) > 1}
+    if duplicate_rois:
+        conflicts = sorted(pair for pair in assignments if pair[0] in duplicate_rois)
+        raise ValueError(
+            f"ROIs assigned to multiple fibers, as (roi, fiber) pairs: {conflicts}"
+        )
+
+    duplicate_fibers = {fiber for fiber in fibers if fibers.count(fiber) > 1}
+    if duplicate_fibers:
+        conflicts = sorted(pair for pair in assignments if pair[1] in duplicate_fibers)
+        raise ValueError(
+            f"Fibers assigned to multiple ROIs, as (roi, fiber) pairs: {conflicts}"
+        )
+
+    roi_to_fiber = dict(assignments)
 
     implanted_fibers = get_implanted_fibers(procedures)
     if not implanted_fibers:
@@ -101,7 +123,7 @@ def get_roi_to_fiber_mapping(
     for roi, fiber in list(roi_to_fiber.items()):
         if fiber not in implanted_fibers:
             logging.warning(
-                f"ROI {roi} is connected to fiber {fiber}, which is not "
+                f"ROI {roi} is assigned to fiber {fiber}, which is not "
                 f"implanted according to procedures. Skipping ROI {roi}"
             )
             del roi_to_fiber[roi]
