@@ -23,4 +23,7 @@ The input to this capsule is the raw data (see file formats link for more detail
 - `R_2`
 - `R_3`
 
-Where G (green), R (red), and Iso are the respective channels with 4-fiber connections 0-indexed. Each timeseries module has timestamps (on the HARP clock) and the data. See the file standards link above for more details on raw data acquisition.
+Where G (green), R (red), and Iso are the respective channels with 4-fiber connections 0-indexed. The number is the fiber index, not the ROI index. Only fibers that were recorded are written. Each timeseries module has timestamps (on the HARP clock) and the data. See the file standards link above for more details on raw data acquisition.
+
+### ROI to fiber mapping
+The CSV columns are ROIs (`ROI_<n>`, or `Fiber_<n>` in older sessions). Each ROI is mapped to a fiber using the `Patch Cord <n>` → `Fiber <m>` connections in `acquisition.json`, where patch cord `n` is ROI `n`. ROIs without a connection are left out of the NWB. ROIs assigned to fibers that are not implanted according to `procedures.json` are also left out. The capsule raises an error if `procedures.json` is missing, if it has no implanted fibers, or if `acquisition.json` has no patch cord connections.
