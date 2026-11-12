@@ -73,10 +73,7 @@ def run() -> None:
     )
     logging.info("Begin processing...", extra={"event_type": "stage_start"})
     logging.info(f"Fiber Settings, {settings.model_dump()}")
-
-    nwb_filename = f"{asset_name}.nwb"
-    nwb_output_path = settings.output_directory / "nwb"
-    nwb_output_path.mkdir(parents=True, exist_ok=True)
+    nwb_filename = "nwb.zarr"
 
     base_nwb_file = create_base_nwb_file(fiber_fp)
 
@@ -107,9 +104,8 @@ def run() -> None:
     )
 
     nwbfile = add_info_to_nwb(nwbfile, fiber_fp)
-    nwb_output_fn = nwb_output_path / nwb_filename
 
-    with NWBZarrIO(path=nwb_output_fn.as_posix(), mode="w") as io:
+    with NWBZarrIO(path=(settings.output_directory / nwb_filename).as_posix(), mode="w") as io:
         io.write(nwbfile)
 
         logging.info("Successfully wrote NWB file.")
